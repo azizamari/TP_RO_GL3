@@ -10,3 +10,4 @@ __pycache__/
 *.ilp
 gurobi.log
 .DS_Store
+.gradio

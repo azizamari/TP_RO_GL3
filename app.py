@@ -228,7 +228,7 @@ def create_home_tab():
     - Objectif: Maximiser la VAN totale
     - Contraintes: Budget multi-périodes, dépendances, exclusions
     
-    **Problème 11.4 - Routage du personnel **
+    **Problème 11.4 - Routage du personnel**
     - Type: PLNE/PLM
     - Objectif: optimiser le distribution: Tournées des équipes de livraison à deux personnes(minimiser la distance totale parcourue et minimiser le nombre de clients non servis).
     - Contraintes: Routage principal et Demande(Visiter ou abandonner, Conservation du Flux, Limite de Capacité), Planification et Fenêtres Temporelles(Bornes des Fenêtres, Séquencement Temporel (Big M)), Appariement des Compétences
@@ -257,7 +257,6 @@ with gr.Blocks(title="Optimisation - TP RO GL3") as app:
             gr.Markdown("## Problème 2\nÀ implémenter par membre 2")
         
         with gr.Tab("Problème 11.4"):
-            #gr.Markdown("## Problème 3\nÀ implémenter par membre 3")
             create_problem_11_4_tab()
         
         with gr.Tab("Problème 5"):
