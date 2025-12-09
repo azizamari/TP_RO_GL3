@@ -1,0 +1,12 @@
+venv/
+.idea
+__pycache__/
+*.pyc
+*.pyo
+*.log
+*.lp
+*.mps
+*.sol
+*.ilp
+gurobi.log
+.DS_Store

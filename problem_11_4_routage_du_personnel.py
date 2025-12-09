@@ -233,19 +233,120 @@ def run_app(n_cust, n_veh, cap, seed):
         if route:
             report += f"Team {v}: Depot -> " + " -> ".join(map(str, route)) + " -> Depot\n"
 
-    return solver.plot_solution(routes, skipped), report
+    status = f"skipped={len(skipped)}"
+
+    return status, solver.plot_solution(routes, skipped), report
 
 
-with gr.Blocks() as demo:
-    gr.Markdown("## 🚛 VRP Solver (Fixed Time Logic)")
-    with gr.Row():
-        i1 = gr.Slider(5, 20, value=10, label="Customers")
-        i2 = gr.Slider(1, 5, value=2, label="Teams")
-        i3 = gr.Slider(50, 200, value=100, label="Capacity")
-        i4 = gr.Number(42, label="Seed")
-        btn = gr.Button("Solve")
-    out = [gr.Plot(), gr.Textbox()]
-    btn.click(run_app, inputs=[i1, i2, i3, i4], outputs=out)
+def create_problem_11_4_tab():
+    with gr.Column():
+        # --- HEADER & PROBLEM DESCRIPTION ---
+        gr.Markdown("""
+        ## Problème 11.4 : Routage du Personnel
+        ### Tournées avec contraintes de compétences et équipes à deux personnes
+
+        **Énoncé :**  
+        Déterminer les routes des employés / équipes pour effectuer des services à différents endroits,  
+        en respectant les horaires, les distances, et les compétences requises.
+
+        **Objectif :**  
+        Minimiser la distance totale + les pénalités pour clients non servis :
+
+        ```
+        MIN Z =  ∑ᵥ ∑ᵢ ∑ⱼ ( dᵢⱼ · xᵢⱼᵥ )  +  P · ∑ⱼ droppedⱼ
+        ```
+
+        **Type :** PLNE (Routing / Assignment)
+
+        ---
+        """)
+
+        gr.Markdown("### Contraintes du modèle")
+
+        gr.Markdown("""
+        **1. Affectation ou Abandon :**  
+        Chaque client est servi par **exactement une** équipe ou abandonné.
+
+        ```
+        ∑ᵥ yⱼᵥ  +  droppedⱼ  =  1    ∀ j
+        ```
+
+        **2. Cohérence Déplacements ↔ Visites :**
+        ```
+        ∑ᵢ xᵢⱼᵥ = yⱼᵥ      ∀ j,v
+        ∑ⱼ xᵢⱼᵥ = yᵢᵥ      ∀ i,v
+        ```
+
+        **3. Dépôt (Départ & Retour) :**
+        ```
+        ∑ⱼ x₀ⱼᵥ = 1      ∀ v
+        ∑ᵢ xᵢ0ᵥ = 1      ∀ v
+        ```
+
+        **4. Compétences (Matching équipes ↔ clients) :**
+        ```
+        yⱼᵥ ≤ skillᵥⱼ     ∀ j,v
+        ```
+
+        **5. Équipe à Deux Personnes :**
+        ```
+        staff_neededᵥ ≤ staff_availableᵥ
+        ```
+
+        **6. Élimination des Sous-Tournées (MTZ) :**
+        ```
+        uⱼᵥ - uᵢᵥ + M·xᵢⱼᵥ ≤ M - 1     ∀ i≠j, v
+        ```
+
+        **7. Domaines :**
+        ```
+        xᵢⱼᵥ ∈ {0,1}
+        yⱼᵥ ∈ {0,1}
+        droppedⱼ ∈ {0,1}
+        uⱼᵥ ≥ 0
+        ```
+        """)
+
+        # --- INPUT PARAMETERS SECTION ---
+        gr.Markdown("### Paramètres d'entrée")
+
+        with gr.Row():
+            customers = gr.Slider(5, 30, step=1, value=10, label="Nombre de clients")
+            teams = gr.Slider(1, 10, step=1, value=3, label="Nombre d'équipes")
+            capacity = gr.Slider(20, 200, step=10, value=100, label="Capacité / Temps / Limit")
+            seed = gr.Number(42, label="Seed aléatoire")
+
+        solve_btn = gr.Button("Résoudre", variant="primary", size="lg")
+
+        # --- OUTPUTS ---
+        gr.Markdown("### Résultats")
+
+        status_box = gr.Textbox(label="Statut")
+        solution_plot = gr.Plot(label="Visualisation des tournées")
+        solution_text = gr.Textbox(label="Solution détaillée", lines=10)
+
+        with gr.Accordion("Formulation mathématique complète", open=False):
+            gr.Markdown(""""
+            Minimiser :Z = ∑ᵥ ∑ᵢ ∑ⱼ dᵢⱼ xᵢⱼᵥ + 10000 · ∑ⱼ droppedⱼ
+                    s.c.
+                    ∑ᵥ yⱼᵥ + droppedⱼ = 1 ∀ j
+                    ∑ᵢ xᵢⱼᵥ = ∑ᵢ xⱼᵢᵥ ∀ j, v
+                    ∑ᵢ ∑ⱼ demandⱼ · xᵢⱼᵥ ≤ capacityᵥ ∀ v
+                    tᵢᵥ + service + dᵢⱼ ≤ tⱼᵥ + M(1 − xᵢⱼᵥ)
+                    xᵢⱼᵥ = 0 si skills(j) ⊄ skills(v)
+                    xᵢⱼᵥ, yⱼᵥ, droppedⱼ ∈ {0,1}
+                    tᵢᵥ, uⱼᵥ ≥ 0
+            """"" )
+
+            solve_btn.click(
+                fn=run_app,
+                inputs=[customers, teams, capacity, seed],
+                outputs=[status_box, solution_plot, solution_text]
+            )
+
+        return
+
+
 
 if __name__ == "__main__":
-    demo.launch()
+    create_problem_11_4_tab().launch(share=True)
