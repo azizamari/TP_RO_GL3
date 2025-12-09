@@ -1,5 +1,5 @@
 venv/
-.idea
+idea/
 __pycache__/
 *.pyc
 *.pyo
@@ -10,4 +10,4 @@ __pycache__/
 *.ilp
 gurobi.log
 .DS_Store
-.gradio
+gradio/
