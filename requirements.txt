@@ -1,9 +1,5 @@
 gurobipy
 gradio
 pandas
-<<<<<<< HEAD
 matplotlib
 numpy
-=======
-matplotlib
->>>>>>> 851da21979f9f9db024c0e217517f32b5164a014
