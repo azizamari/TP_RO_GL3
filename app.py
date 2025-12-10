@@ -4,8 +4,11 @@ from gurobipy import *
 from problem_11_4_routage_du_personnel import *
 import io
 import sys
+
+import problem_2 as problem_17_2
 from problem_location_allocation import LocationAllocationSolver
 import matplotlib.pyplot as plt
+
 
 def solve_problem_9_4(budget_y1, budget_y2, budget_y3):
     output = io.StringIO()
@@ -447,6 +450,326 @@ def create_location_allocation_tab():
     
     return interface
 
+
+
+def solve_problem_17_2(price_min, price_max, capacity_mult, demand_sens):
+    
+    try:
+        res = problem_17_2.solve(
+            price_min=price_min,
+            price_max=price_max,
+            capacity_multiplier=capacity_mult,
+            demand_sensitivity=demand_sens,
+            segments=['res', 'comm', 'ind'],
+            verbose=False,
+            return_dict=True
+        )
+
+        if not isinstance(res, dict):
+            return "❌ Erreur interne: résultat inattendu du solveur", None, None, "❌ Erreur"
+
+        status = res.get('status')
+        if status == 'optimal':
+           
+            results = res.get('results', [])
+            df_results = pd.DataFrame(results)
+
+            
+            stats = [
+                {'Métrique': '💰 Profit Total', 'Valeur': f"{res.get('objective',0):,.2f} €"},
+                {'Métrique': '💵 Revenu Total', 'Valeur': f"{res.get('revenu_total',0):,.2f} €"},
+                {'Métrique': '🏭 Coût Total', 'Valeur': f"{res.get('cout_total',0):,.2f} €"},
+                {'Métrique': '⚡ Quantité Totale', 'Valeur': f"{res.get('quantite_totale',0):,.0f} kWh"},
+                {'Métrique': '📊 Prix Moyen', 'Valeur': f"{res.get('prix_moyen',0):.3f} €/kWh"},
+                {'Métrique': '📈 Marge Bénéficiaire', 'Valeur': f"{res.get('marge',0):.1f}%"},
+            ]
+            df_stats = pd.DataFrame(stats)
+
+         
+            summary_md = f"""
+        ## ✅ Résultats de l'Optimisation
+
+        - **Profit Total:** {res.get('objective',0):,.2f} €
+        - **Revenu Total:** {res.get('revenu_total',0):,.2f} €
+        - **Coût Total:** {res.get('cout_total',0):,.2f} €
+        - **Quantité Totale:** {res.get('quantite_totale',0):,.0f} kWh
+        """
+            return summary_md, df_results, df_stats, "✅ Solution optimale trouvée"
+
+        elif status == 'infeasible' or status == 'infeasible_params':
+            err = res.get('error', 'Problème infaisable')
+            iis = res.get('iis')
+            md = f"## ❌ Infaisable\n\n{err}"
+            if iis:
+                md += f"\n\nIIS écrit: {iis}"
+            return md, None, None, "❌ Infaisable"
+
+        else:
+            return f"⚠️ Statut: {status}", None, None, f"⚠️ Status: {status}"
+
+    except Exception as e:
+        return f"❌ Erreur interne: {e}", None, None, "❌ Erreur"
+
+
+def create_problem_17_2_tab():
+    
+    
+    with gr.Column():
+
+        gr.Markdown("""
+        ## ⚡ Problème 2: Tarification Optimale de l'Électricité
+        
+        ### 📋 Contexte
+        Une compagnie d'électricité doit déterminer les **prix optimaux** pour différentes 
+        périodes de la journée afin de **maximiser le profit** tout en respectant les 
+        contraintes de capacité de production et en tenant compte de la **demande élastique** 
+        des consommateurs.
+        
+        ### 🎯 Objectif Mathématique
+        **Maximiser:** Z = Σ(Prix × Quantité - Coût × Quantité)  
+        **Type:** Programmation Linéaire (PL) / Programmation Linéaire Mixte (PLM)
+        
+        ### 💡 Concept de Demande Élastique
+        La demande réagit au prix selon le modèle:  
+        **Quantité = Demande de base - Élasticité × Prix**
+        
+        - Prix ↑ → Demande ↓ (les consommateurs réduisent leur consommation)
+        - Prix ↓ → Demande ↑ (les consommateurs consomment plus)
+        
+        ### 📊 Périodes de la Journée
+        """)
+      
+        periodes_info = {
+            'Période': [
+                '🌙 Nuit (0h-4h)',
+                '🌅 Matin tôt (4h-8h)',
+                '☀️ Matin (8h-12h)',
+                '🌤️ Après-midi (12h-16h)',
+                '🌆 Soirée (16h-20h)',
+                '🌃 Nuit tardive (20h-24h)'
+            ],
+            'Demande de Base': ['5,000 kWh', '8,000 kWh', '12,000 kWh', '10,000 kWh', '15,000 kWh ⚡', '7,000 kWh'],
+            'Capacité': ['6,000 kWh', '9,000 kWh', '13,000 kWh', '11,000 kWh', '16,000 kWh', '8,000 kWh'],
+            'Coût Production': ['0.05 €/kWh', '0.08 €/kWh', '0.12 €/kWh', '0.10 €/kWh', '0.15 €/kWh', '0.07 €/kWh'],
+            'Caractéristique': ['Faible demande', 'Demande croissante', 'Haute demande', 'Demande modérée', 'HEURE DE POINTE', 'Demande décroissante']
+        }
+        df_periodes = pd.DataFrame(periodes_info)
+        gr.Dataframe(value=df_periodes, interactive=False)
+        
+        gr.Markdown("""
+        ### ⚖️ Contraintes du Modèle
+        
+        #### 1. **Demande Élastique(Relation Prix-Quantité)**
+        ```
+        q[t] = demande_base[t] - élasticité[t] × p[t]  ∀t
+        ```
+        La quantité demandée dépend du prix fixé.
+        
+        #### 2. **Capacité de Production**
+        ```
+        q[t] ≤ capacité[t]  ∀t
+        ```
+        Ne peut pas vendre plus que la capacité de production.
+        
+        #### 3. **Bornes de Prix**
+        ```
+        prix_min ≤ p[t] ≤ prix_max  ∀t
+        ```
+        Réglementation des prix (éviter l'abus ou le dumping).
+        
+        #### 4. **Continuité des Prix**
+        ```
+        |p[t] - p[t-1]| ≤ 0.15 €/kWh
+        ```
+        Éviter les chocs de prix entre périodes consécutives.
+        
+        #### 5. **Non-négativité**
+        ```
+        p[t] ≥ 0, q[t] ≥ 0  ∀t
+        ```
+        
+        ---
+        
+        ### 🎛️ Paramètres de Simulation
+        
+        Ajustez les paramètres pour explorer différents scénarios:
+        """)
+        
+        
+        with gr.Row():
+            price_min = gr.Slider(
+                minimum=0.05, maximum=0.30, value=0.10, step=0.01,
+                label="💵 Prix Minimum (€/kWh)",
+                info="Prix plancher réglementaire - ne peut pas vendre en dessous"
+            )
+            price_max = gr.Slider(
+                minimum=0.20, maximum=0.80, value=0.50, step=0.05,
+                label="💰 Prix Maximum (€/kWh)",
+                info="Prix plafond réglementaire - ne peut pas vendre au-dessus"
+            )
+        
+        with gr.Row():
+            capacity_mult = gr.Slider(
+                minimum=0.5, maximum=1.5, value=1.0, step=0.1,
+                label="🏭 Capacité de Production (Multiplicateur)",
+                info="1.0 = 100% de capacité | <1.0 = Production réduite | >1.0 = Capacité augmentée"
+            )
+            demand_sens = gr.Slider(
+                minimum=0.5, maximum=2.0, value=1.0, step=0.1,
+                label="📊 Sensibilité de la Demande",
+                info="1.0 = Normale | >1.0 = Très élastique (réagit plus au prix) | <1.0 = Peu élastique"
+            )
+        
+        gr.Markdown("""
+        ### 📝 Scénarios Suggérés
+        
+        - **Scenario 1 - Standard:** Prix [0.10 - 0.50], Capacité 1.0, Sensibilité 1.0
+        - **Scenario 2 - Crise Énergétique:** Prix [0.15 - 0.80], Capacité 0.7, Sensibilité 1.5
+        - **Scenario 3 - Surcapacité:** Prix [0.05 - 0.40], Capacité 1.5, Sensibilité 0.8
+        - **Scenario 4 - Régulation Stricte:** Prix [0.20 - 0.35], Capacité 1.0, Sensibilité 1.2
+        """)
+
+        
+        solve_btn = gr.Button("🚀 Optimiser la Tarification", variant="primary", size="lg")
+        
+        
+        gr.Markdown("### 📈 Résultats de l'Optimisation")
+        
+        status_output = gr.Textbox(label="Statut", lines=1, show_label=True)
+        summary_output = gr.Markdown()
+        
+        with gr.Row():
+            with gr.Column(scale=2):
+                results_table = gr.Dataframe(
+                    label="⚡ Tarification par Période",
+                    interactive=False,
+                    wrap=True
+                )
+            with gr.Column(scale=1):
+                stats_table = gr.Dataframe(
+                    label="📊 Statistiques Globales",
+                    interactive=False
+                )
+
+        
+        with gr.Accordion("📐 Formulation Mathématique Complète", open=False):
+            gr.Markdown("""
+ ### Modèle d'Optimisation Complet
+
+#### Ensembles et Indices
+```
+T = {0, 1, 2, 3, 4, 5}  (6 périodes de 4 heures)
+t ∈ T : indice de période
+```
+
+#### Paramètres
+```
+a[t]     : Demande de base à la période t (kWh)
+b[t]     : Coefficient d'élasticité à la période t
+c[t]     : Coût de production à la période t (€/kWh)
+Q_max[t] : Capacité de production à la période t (kWh)
+p_min    : Prix minimum réglementaire (€/kWh)
+p_max    : Prix maximum réglementaire (€/kWh)
+Δp_max   : Variation maximale de prix entre périodes (€/kWh)
+```
+
+#### Variables de Décision
+```
+p[t] ∈ R+ : Prix de l'électricité à la période t (€/kWh)
+q[t] ∈ R+ : Quantité vendue à la période t (kWh)
+```
+
+#### Fonction Objectif
+```
+Maximiser:
+Z = Σ(t∈T) [p[t] × q[t] - c[t] × q[t]]
+  = Σ(t∈T) [(p[t] - c[t]) × q[t]]
+
+Où:
+- p[t] × q[t] = Revenu à la période t
+- c[t] × q[t] = Coût de production à la période t
+- (p[t] - c[t]) × q[t] = Profit à la période t
+```
+
+#### Contraintes
+
+**1. Demande Élastique (Relation Prix-Quantité):**
+```
+q[t] = a[t] - b[t] × p[t]    ∀t ∈ T
+```
+
+**2. Capacité de Production:**
+```
+q[t] ≤ Q_max[t]              ∀t ∈ T
+```
+
+**3. Bornes de Prix:**
+```
+p_min ≤ p[t] ≤ p_max         ∀t ∈ T
+```
+
+**4. Continuité des Prix (variation entre périodes consécutives):**
+```
+p[t+1] - p[t] ≤ Δp_max       ∀t ∈ T \ {5}
+p[t] - p[t+1] ≤ Δp_max       ∀t ∈ T \ {5}
+```
+
+**5. Cycle 24h (continuité entre dernière et première période):**
+```
+p[0] - p[5] ≤ Δp_max
+p[5] - p[0] ≤ Δp_max
+```
+
+**6. Non-négativité:**
+```
+p[t] ≥ 0                     ∀t ∈ T
+q[t] ≥ 0                     ∀t ∈ T
+```
+
+#### Valeurs Numériques
+
+**Demande de base (kWh):**
+```
+a = [5000, 8000, 12000, 10000, 15000, 7000]
+```
+
+**Élasticité de base:**
+```
+b = [8000, 12000, 20000, 15000, 25000, 10000] × sensibilité
+```
+
+**Capacité (kWh):**
+```
+Q_max = [6000, 9000, 13000, 11000, 16000, 8000] × multiplicateur
+```
+
+**Coûts de production (€/kWh):**
+```
+c = [0.05, 0.08, 0.12, 0.10, 0.15, 0.07]
+```
+
+**Autres paramètres:**
+```
+Δp_max = 0.15 €/kWh
+p_min = 0.10 €/kWh (ajustable)
+p_max = 0.50 €/kWh (ajustable)
+```
+
+#### Nature du Problème
+- **Type:** Programmation Linéaire (PL)
+- **Variables:** 12 continues (6 prix + 6 quantités)
+- **Contraintes:** ~20 (6 demande + 6 capacité + 2 bornes + ~12 continuité)
+- **Complexité:** Polynomial (résolu efficacement par simplex)
+            """)
+        
+      
+        
+        solve_btn.click(
+            fn=solve_problem_17_2,
+            inputs=[price_min, price_max, capacity_mult, demand_sens],
+            outputs=[summary_output, results_table, stats_table, status_output]
+        )
+
 def create_home_tab():
     gr.Markdown("""
     # Optimisation Solver
@@ -460,6 +783,15 @@ def create_home_tab():
     - Objectif: Maximiser la VAN totale
     - Contraintes: Budget multi-périodes, dépendances, exclusions
     
+
+    **Problème 17.2 - Tarification Optimale de l'Électricité**
+    - Type: PL/PLM
+    - Objectif: Déterminer le prix optimal de l'Électricité afin de maximiser le revenu 
+    - Contraintes: Demande élastique, Capacité de production, Prix minimum, Prix maximum, Contrainte de continuité       
+
+    **Problèmes 3, 5**
+    - À implémenter par les membres de l'équipe
+
     **Problème 11.4 - Routage du Personnel (VRP)**
     - Type: Vehicle Routing Problem
     - Objectif: Minimiser la distance totale
@@ -469,6 +801,7 @@ def create_home_tab():
     - Type: Facility Location Problem
     - Objectif: Minimiser coûts de transport et d'ouverture
     - Contraintes: Capacité des centres, demande des quartiers
+
     
     ---
     """)
@@ -486,8 +819,8 @@ with gr.Blocks(title="Optimisation - TP RO GL3") as app:
         with gr.Tab("Problème 4.5 - Localisation"):
             create_location_allocation_tab()
         
-        with gr.Tab("Problème 2"):
-            gr.Markdown("## Problème 2\nÀ implémenter par membre 2")
+        with gr.Tab("Problème 17.2 - Tarification Optimale de l'Électricité"):
+            create_problem_17_2_tab()
         
         with gr.Tab("Problème 11.4"):
             create_problem_11_4_tab()
