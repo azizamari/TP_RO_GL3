@@ -108,15 +108,84 @@ def solve_problem_9_4(budget_y1, budget_y2, budget_y3):
 **ROI:** {(van_totale/cout_total)*100:.0f}%
 """
             
-            return summary, df_selected, df_budget, "Statut: Solution optimale trouvée"
+            # Create visualization
+            fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(14, 10))
+            fig.suptitle('Analyse de la Sélection d\'Investissements', fontsize=16, fontweight='bold')
+            
+            # 1. VAN par projet sélectionné
+            selected_projects = [projets[i] for i in range(n_projets) if x[i].x > 0.5]
+            selected_vans = [van[i] for i in range(n_projets) if x[i].x > 0.5]
+            colors1 = plt.cm.viridis([i/len(selected_projects) for i in range(len(selected_projects))])
+            bars1 = ax1.barh(selected_projects, selected_vans, color=colors1)
+            ax1.set_xlabel('VAN (M€)', fontweight='bold')
+            ax1.set_title('VAN par Projet Sélectionné', fontweight='bold')
+            ax1.grid(axis='x', alpha=0.3)
+            for i, (bar, val) in enumerate(zip(bars1, selected_vans)):
+                ax1.text(val, bar.get_y() + bar.get_height()/2, f' {val}M€', 
+                        va='center', fontweight='bold')
+            
+            # 2. Utilisation du budget par année
+            years = ['Année 1', 'Année 2', 'Année 3']
+            x_pos = range(len(years))
+            width = 0.35
+            bars_used = ax2.bar([p - width/2 for p in x_pos], cout_total_par_periode, 
+                               width, label='Utilisé', color='#e74c3c')
+            bars_budget = ax2.bar([p + width/2 for p in x_pos], budget, 
+                                 width, label='Budget', color='#3498db', alpha=0.7)
+            ax2.set_xlabel('Période', fontweight='bold')
+            ax2.set_ylabel('Montant (M€)', fontweight='bold')
+            ax2.set_title('Utilisation du Budget par Année', fontweight='bold')
+            ax2.set_xticks(x_pos)
+            ax2.set_xticklabels(years)
+            ax2.legend()
+            ax2.grid(axis='y', alpha=0.3)
+            for bars in [bars_used, bars_budget]:
+                for bar in bars:
+                    height = bar.get_height()
+                    ax2.text(bar.get_x() + bar.get_width()/2., height,
+                            f'{height:.0f}', ha='center', va='bottom', fontweight='bold')
+            
+            # 3. Répartition des coûts par projet
+            selected_costs = [sum(couts[i]) for i in range(n_projets) if x[i].x > 0.5]
+            colors3 = plt.cm.Set3(range(len(selected_projects)))
+            wedges, texts, autotexts = ax3.pie(selected_costs, labels=selected_projects, autopct='%1.1f%%',
+                                                colors=colors3, startangle=90)
+            ax3.set_title('Répartition des Coûts Totaux', fontweight='bold')
+            for autotext in autotexts:
+                autotext.set_color('white')
+                autotext.set_fontweight('bold')
+            
+            # 4. Métriques clés
+            ax4.axis('off')
+            metrics_text = f"""
+MÉTRIQUES CLÉS
+
+VAN Totale:        {van_totale:.2f} M€
+Coût Total:        {cout_total:.0f} M€
+ROI:               {(van_totale/cout_total)*100:.0f}%
+
+Projets:           {len(projets_selectionnes)}/{n_projets} sélectionnés
+
+Budget Total:      {budget_total} M€
+Budget Utilisé:    {cout_total:.0f} M€
+Budget Restant:    {budget_total - cout_total:.0f} M€
+Taux d'utilisation: {(cout_total/budget_total)*100:.1f}%
+"""
+            ax4.text(0.1, 0.5, metrics_text, fontsize=12, family='monospace',
+                    verticalalignment='center', bbox=dict(boxstyle='round', 
+                    facecolor='lightblue', alpha=0.3))
+            
+            plt.tight_layout()
+            
+            return summary, df_selected, df_budget, "Statut: Solution optimale trouvée", fig
         
         elif model.status == GRB.INFEASIBLE:
-            return "Problème infaisable avec ces contraintes", None, None, "Statut: Infaisable"
+            return "Problème infaisable avec ces contraintes", None, None, "Statut: Infaisable", None
         else:
-            return f"Statut: {model.status}", None, None, f"Statut: {model.status}"
+            return f"Statut: {model.status}", None, None, f"Statut: {model.status}", None
             
     except Exception as e:
-        return f"Erreur: {str(e)}", None, None, f"Erreur: {str(e)}"
+        return f"Erreur: {str(e)}", None, None, f"Erreur: {str(e)}", None
     finally:
         sys.stdout = sys.__stdout__
 
@@ -186,6 +255,8 @@ def create_problem_9_4_tab():
         status_output = gr.Textbox(label="Statut", lines=1)
         summary_output = gr.Markdown()
         
+        visualization_output = gr.Plot(label="Analyse Visuelle")
+        
         with gr.Row():
             selected_projects = gr.Dataframe(label="Projets sélectionnés", interactive=False)
             budget_usage = gr.Dataframe(label="Utilisation du budget", interactive=False)
@@ -215,7 +286,7 @@ xᵢ ∈ {0,1}  ∀i ∈ {0,1,2,3,4,5,6,7}
         solve_btn.click(
             fn=solve_problem_9_4,
             inputs=[budget_y1, budget_y2, budget_y3],
-            outputs=[summary_output, selected_projects, budget_usage, status_output]
+            outputs=[summary_output, selected_projects, budget_usage, status_output, visualization_output]
         )
 
 
@@ -381,23 +452,25 @@ def create_home_tab():
     # Optimisation Solver
     ## TP Recherche Opérationnelle - GL3
     
-    ### Problèmes disponibles
+    ### Problèmes implémentés
     
-    **Problème 9.4 - Sélection d'Investissements (Énergie)**
+    **Problème 9.4 - Sélection d'Investissements (Capital Budgeting)**
+    - Secteur: Énergie
     - Type: PLNE (Binaire)
     - Objectif: Maximiser la VAN totale
     - Contraintes: Budget multi-périodes, dépendances, exclusions
-                
-    **Problème 4.5 - Localisation-Allocation (Centres de Tri)**
-    - Type: PLNE/PLM (Mixte Binaire-Continu)
-    - Objectif: Minimiser coûts totaux (fixes + transport)
-    - Contraintes: Budget, capacités, desserte complète
     
-    **Problèmes 2, 3, 5**
-    - À implémenter par les membres de l'équipe
+    **Problème 11.4 - Routage du Personnel (VRP)**
+    - Type: Vehicle Routing Problem
+    - Objectif: Minimiser la distance totale
+    - Contraintes: Capacité véhicules, fenêtres temporelles
+    
+    **Problème - Localisation-Allocation**
+    - Type: Facility Location Problem
+    - Objectif: Minimiser coûts de transport et d'ouverture
+    - Contraintes: Capacité des centres, demande des quartiers
     
     ---
-
     """)
 
 with gr.Blocks(title="Optimisation - TP RO GL3") as app:
