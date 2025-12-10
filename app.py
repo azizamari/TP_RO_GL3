@@ -4,6 +4,8 @@ from gurobipy import *
 from problem_11_4_routage_du_personnel import *
 import io
 import sys
+from problem_location_allocation import LocationAllocationSolver
+import matplotlib.pyplot as plt
 
 def solve_problem_9_4(budget_y1, budget_y2, budget_y3):
     output = io.StringIO()
@@ -216,6 +218,164 @@ xᵢ ∈ {0,1}  ∀i ∈ {0,1,2,3,4,5,6,7}
             outputs=[summary_output, selected_projects, budget_usage, status_output]
         )
 
+
+def create_location_allocation_tab():
+    """Crée l'interface Gradio"""
+    
+    solver = LocationAllocationSolver()
+    
+    def optimiser_threaded(budget, max_sites, capacite_mult, poids_co2,
+                            distance_max):
+        """Fonction d'optimisation"""
+        
+        try:
+            resultats, model = solver.solve(
+                budget_max=budget,
+                max_sites=max_sites,
+                capacite_mult=capacite_mult,
+                poids_co2=poids_co2,
+                distance_max_penalite=distance_max
+            )
+            
+            if resultats['optimal']:
+                # Créer visualisation
+                fig = solver.visualiser_solution(resultats, 'solution.png')
+                plt.close(fig)
+                
+                # Créer DataFrame des sites
+                sites_data = []
+                for j in resultats['sites_ouverts']:
+                    charge = resultats['charges_sites'][j]['total']
+                    capacite = sum(solver.sites[f'capacite_{t}'][j] 
+                                  for t in ['recyclable', 'organique', 'dangereux'])
+                    taux = (charge / (capacite * capacite_mult)) * 100
+                    
+                    sites_data.append({
+                        'Site': solver.sites['noms'][j],
+                        'Coût fixe': f"{solver.sites['cout_fixe'][j]} kTND/an",
+                        'Charge': f"{charge:.1f} t/sem",
+                        'Capacité': f"{capacite * capacite_mult:.0f} t/sem",
+                        'Utilisation': f"{taux:.1f}%",
+                        'CO₂': f"{solver.sites['emissions_co2'][j]} t/an"
+                    })
+                
+                df_sites = pd.DataFrame(sites_data)
+                
+                # Créer DataFrame des affectations
+                df_affectations = pd.DataFrame(resultats['affectations'])
+                if not df_affectations.empty:
+                    df_affectations['proportion'] = df_affectations['proportion'].apply(lambda x: f"{x:.1f}%")
+                    df_affectations['demande'] = df_affectations['demande'].apply(lambda x: f"{x:.1f} t")
+                
+                # Message de résumé
+                stats = resultats['statistiques']
+                message = f"""
+### ✅ OPTIMISATION RÉUSSIE
+
+**💰 Coût Total:** {resultats['cout_total_reel']:.2f} kTND/an
+- Coûts fixes: {resultats['cout_fixe']:.2f} kTND/an ({(resultats['cout_fixe']/resultats['cout_total_reel']*100):.1f}%)
+- Coûts transport: {resultats['cout_transport']:.2f} kTND/an ({(resultats['cout_transport']/resultats['cout_total_reel']*100):.1f}%)
+- Pénalités: {resultats['cout_penalite']:.2f} kTND/an ({(resultats['cout_penalite']/resultats['cout_total_reel']*100):.1f}%)
+
+**🌍 Impact Environnemental:** {resultats['emissions_co2']:.0f} tonnes CO₂/an
+
+**📊 Statistiques:**
+- Sites ouverts: {stats['nb_sites_ouverts']}/{solver.n_sites}
+- Budget utilisé: {stats['budget_utilise']:.0f}/{budget} kTND/an ({(stats['budget_utilise']/budget*100):.1f}%)
+- Taux d'utilisation: {stats['taux_utilisation']:.1f}%
+- Demande traitée: {stats['demande_totale']:.0f} tonnes/semaine
+- Coût transport moyen: {stats['cout_transport_moyen']:.2f} TND/tonne
+"""
+                
+                return message, df_sites, df_affectations, 'solution.png'
+            
+            elif resultats['infaisable']:
+                return "❌ Problème INFAISABLE - Ajustez les contraintes (augmentez le budget ou le nombre de sites)", None, None, None
+            
+            else:
+                return f"⚠️ Statut: {resultats['status']}", None, None, None
+        
+        except Exception as e:
+            return f"❌ Erreur: {str(e)}", None, None, None
+    
+    
+    # Interface Gradio
+    with gr.Column():
+        with gr.Blocks(title="Localisation-Allocation Avancé") as interface:
+            gr.Markdown("""
+            # 🏭 Système de Localisation-Allocation des Centres de Tri
+            ## Modèle PLNE/PLM Avancé avec Optimisation Multi-Objectif
+            
+            **Fonctionnalités:**
+            -  Optimisation bi-objectif (coût + CO₂)
+            -  Capacités multiples (poids ET volume)
+            -  Pénalités de distance
+            """)
+            
+            with gr.Row():
+                with gr.Column(scale=1):
+                    gr.Markdown("### ⚙️ Paramètres d'Optimisation")
+                    
+                    budget = gr.Slider(400, 1300, value=800, step=50,
+                                    label="💰 Budget Maximum (kTND/an)")
+                    max_sites = gr.Slider(1, 5, value=3, step=1,
+                                        label="📍 Nombre Maximum de Sites")
+                    capacite_mult = gr.Slider(0.5, 2.0, value=1.0, step=0.1,
+                                            label="📦 Multiplicateur de Capacité")
+                    poids_co2 = gr.Slider(0, 1, value=0.3, step=0.1,
+                                        label="🌍 Poids CO₂ (0=coût, 1=environnement)")
+                    distance_max = gr.Slider(20, 50, value=40, step=5,
+                                            label="Coût de transport unitaire maximum avant pénalité (TND/t)")
+                                    
+                    btn_optimiser = gr.Button("🚀 OPTIMISER", variant="primary", size="lg")
+                
+                with gr.Column(scale=2):
+                    gr.Markdown("### 📊 Résultats")
+                    
+                    message_output = gr.Markdown()
+                    
+                    with gr.Tabs():
+                        with gr.Tab("🗺️ Visualisation"):
+                            image_output = gr.Image(label="Carte de la Solution")
+                        
+                        with gr.Tab("📍 Sites"):
+                            sites_output = gr.Dataframe(label="Sites Sélectionnés")
+                        
+                        with gr.Tab("🔄 Affectations"):
+                            affectations_output = gr.Dataframe(label="Affectations Détaillées")
+            
+            btn_optimiser.click(
+                fn=optimiser_threaded,
+                inputs=[budget, max_sites, capacite_mult, poids_co2,
+                        distance_max],
+                outputs=[message_output, sites_output, affectations_output, image_output]
+            )
+            
+            gr.Markdown("""
+            ---
+            ### 📐 Modélisation Mathématique
+            
+            **Variables:**
+            - `y[j] ∈ {0,1}`: 1 si site j ouvert
+            - `x[i,j] ∈ [0,1]`: proportion de demande du quartier i, servie par site j
+            
+            **Fonction Objectif:**
+            ```
+            MIN Z = (1-λ) × [Σ CoûtFixe[j]×y[j] + Σ CoûtTransport[i,j]×Demande[i]×x[i,j] + Pénalités]
+                    + λ × Σ Emissions[j]×y[j]
+            ```
+            
+            **Contraintes principales:**
+            1. Desserte complète par type: `Σⱼ x[i,j] = 1` ∀i
+            2. Liaison ouverture: `x[i,j] ≤ y[j]` ∀i,j
+            3. Capacité poids: `Σᵢ Demande[i]×x[i,j] ≤ Capacité[j]` ∀j
+            4. Capacité volume: `Σᵢ Volume[i]×x[i,j] ≤ CapacitéVolume[j]` ∀j
+            7. Budget: `Σⱼ CoûtFixe[j]×y[j] ≤ Budget`
+            8. Limite sites: `Σⱼ y[j] ≤ MaxSites`
+            """)
+    
+    return interface
+
 def create_home_tab():
     gr.Markdown("""
     # Optimisation Solver
@@ -227,8 +387,13 @@ def create_home_tab():
     - Type: PLNE (Binaire)
     - Objectif: Maximiser la VAN totale
     - Contraintes: Budget multi-périodes, dépendances, exclusions
+                
+    **Problème 4.5 - Localisation-Allocation (Centres de Tri)**
+    - Type: PLNE/PLM (Mixte Binaire-Continu)
+    - Objectif: Minimiser coûts totaux (fixes + transport)
+    - Contraintes: Budget, capacités, desserte complète
     
-    **Problèmes 1, 2, 3, 5**
+    **Problèmes 2, 3, 5**
     - À implémenter par les membres de l'équipe
     
     ---
@@ -245,8 +410,8 @@ with gr.Blocks(title="Optimisation - TP RO GL3") as app:
         with gr.Tab("Problème 9.4 - Énergie"):
             create_problem_9_4_tab()
         
-        with gr.Tab("Problème 1"):
-            gr.Markdown("## Problème 1\nÀ implémenter par membre 1")
+        with gr.Tab("Problème 4.5 - Localisation"):
+            create_location_allocation_tab()
         
         with gr.Tab("Problème 2"):
             gr.Markdown("## Problème 2\nÀ implémenter par membre 2")
