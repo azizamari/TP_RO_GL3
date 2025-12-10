@@ -3,7 +3,7 @@ import sys
 PROBLEMS = {
     '1': {'name': 'Problème 1 - [À définir]', 'module': 'problem_1'},
     '2': {'name': 'Problème 2 - [À définir]', 'module': 'problem_2'},
-    '3': {'name': 'Problème 3 - [À définir]', 'module': 'problem_3'},
+    '3': {'name': 'Problème 11.4 - Routage du personnel ', 'module': 'problem_11_4_routage'},
     '4': {'name': 'Problème 9.4 - Sélection Investissements (Énergie)', 'module': 'problem_9_4_energy'},
     '5': {'name': 'Problème 5 - [À définir]', 'module': 'problem_5'},
 }

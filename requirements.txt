@@ -1,3 +1,5 @@
 gurobipy
 gradio
 pandas
+matplotlib
+numpy

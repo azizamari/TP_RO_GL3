@@ -1,6 +1,7 @@
 import gradio as gr
 import pandas as pd
 from gurobipy import *
+from problem_11_4_routage_du_personnel import *
 import io
 import sys
 
@@ -250,8 +251,8 @@ with gr.Blocks(title="Optimisation - TP RO GL3") as app:
         with gr.Tab("Problème 2"):
             gr.Markdown("## Problème 2\nÀ implémenter par membre 2")
         
-        with gr.Tab("Problème 3"):
-            gr.Markdown("## Problème 3\nÀ implémenter par membre 3")
+        with gr.Tab("Problème 11.4"):
+            create_problem_11_4_tab()
         
         with gr.Tab("Problème 5"):
             gr.Markdown("## Problème 5\nÀ implémenter par membre 5")
